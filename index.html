@@ -869,7 +869,12 @@ function attachTouchDrag(bubble, itemIdx) {
   }, {passive:true});
 
   bubble.addEventListener('touchmove', e => {
-    if (!isDragging) { clearTimeout(pressTimer); return; }
+    if (!isDragging) {
+      const dx=Math.abs(e.touches[0].clientX-(bubble.getBoundingClientRect().left+bubble.getBoundingClientRect().width/2));
+      const dy=Math.abs(e.touches[0].clientY-(bubble.getBoundingClientRect().top+bubble.getBoundingClientRect().height/2));
+      if(dx>12||dy>12) clearTimeout(pressTimer);
+      return;
+    }
     e.preventDefault();
     const touch = e.touches[0];
     if (ghost) ghost.style.top = (touch.clientY - 25) + 'px';
@@ -1106,37 +1111,70 @@ function renderTsBucket() {
 // ── 구분선 터치 드래그 ──
 function attachDivTouchDrag(el, itemIdx) {
   let pressTimer=null, isDragging=false, ghost=null, dropLine=null;
+  let startX=0, startY=0;
   function clearLine(){if(dropLine){dropLine.remove();dropLine=null;}}
+
   el.addEventListener('touchstart',e=>{
+    startX=e.touches[0].clientX;
+    startY=e.touches[0].clientY;
     pressTimer=setTimeout(()=>{
-      isDragging=true;navigator.vibrate&&navigator.vibrate([30,20,30]);
-      ghost=el.cloneNode(true);const r=el.getBoundingClientRect();
+      isDragging=true;
+      navigator.vibrate&&navigator.vibrate([30,20,30]);
+      ghost=el.cloneNode(true);
+      const r=el.getBoundingClientRect();
       ghost.style.cssText=`position:fixed;z-index:9999;left:${r.left}px;top:${r.top}px;width:${r.width}px;opacity:0.75;pointer-events:none;transition:none;`;
       document.body.appendChild(ghost);
-    },600);
+    },700);
   },{passive:true});
+
   el.addEventListener('touchmove',e=>{
-    if(!isDragging){clearTimeout(pressTimer);return;}
-    e.preventDefault();const t=e.touches[0];
-    if(ghost)ghost.style.top=(t.clientY-15)+'px';
-    clearLine();ghost.style.display='none';
+    const dx=Math.abs(e.touches[0].clientX-startX);
+    const dy=Math.abs(e.touches[0].clientY-startY);
+    // 많이 움직이면 타이머 취소 (드래그 시작 전에만)
+    if(!isDragging){
+      if(dx>12||dy>12) clearTimeout(pressTimer);
+      return;
+    }
+    e.preventDefault();
+    const t=e.touches[0];
+    if(ghost)ghost.style.top=(t.clientY-20)+'px';
+    clearLine();
+    ghost.style.display='none';
     const target=document.elementFromPoint(t.clientX,t.clientY);
     ghost.style.display='';
     const targetRow=target?.closest('.brow,.divider-row');
-    if(targetRow){const r=targetRow.getBoundingClientRect();dropLine=document.createElement('div');dropLine.className='drop-line';if(t.clientY<r.top+r.height/2)targetRow.before(dropLine);else targetRow.after(dropLine);}
+    if(targetRow&&targetRow!==el.closest('.brow')){
+      const r=targetRow.getBoundingClientRect();
+      dropLine=document.createElement('div');
+      dropLine.className='drop-line';
+      if(t.clientY<r.top+r.height/2) targetRow.before(dropLine);
+      else targetRow.after(dropLine);
+    }
   },{passive:false});
+
   el.addEventListener('touchend',e=>{
-    clearTimeout(pressTimer);if(!isDragging)return;isDragging=false;
-    if(ghost){ghost.remove();ghost=null;}clearLine();
+    clearTimeout(pressTimer);
+    if(!isDragging)return;
+    isDragging=false;
+    if(ghost){ghost.remove();ghost=null;}
+    clearLine();
     const t=e.changedTouches[0];
     const tb=document.elementFromPoint(t.clientX,t.clientY)?.closest('[data-i]');
     if(tb&&+tb.dataset.i!==itemIdx){
-      const dest=+tb.dataset.i,arr=[...items],moved=arr.splice(itemIdx,1)[0];
+      const dest=+tb.dataset.i;
+      const arr=[...items];
+      const moved=arr.splice(itemIdx,1)[0];
       arr.splice(itemIdx<dest?dest-1:dest,0,moved);
-      const base=Date.now();arr.forEach((it,i2)=>{it.order=base+i2;saveItem(it);});
+      const base=Date.now();
+      arr.forEach((it,i2)=>{it.order=base+i2;saveItem(it);});
     }
   },{passive:true});
-  el.addEventListener('touchcancel',()=>{clearTimeout(pressTimer);isDragging=false;if(ghost){ghost.remove();ghost=null;}clearLine();});
+
+  el.addEventListener('touchcancel',()=>{
+    clearTimeout(pressTimer);isDragging=false;
+    if(ghost){ghost.remove();ghost=null;}
+    clearLine();
+  });
 }
 
 // ── SETTINGS ──
