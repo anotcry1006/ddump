@@ -850,19 +850,11 @@ function attachLongPress(el, cb) {
   el.addEventListener('dblclick', e => { e.preventDefault(); cb(); });
 }
 
-// ── 터치 드래그로 순서 변경 (삽입선 + 2초 홀드 하위항목) ──
+// ── 터치 드래그로 순서 변경 ──
 function attachTouchDrag(bubble, itemIdx) {
-  let pressTimer = null;
-  let isDragging = false;
-  let ghost = null;
-  let hoverTimer = null;
-  let lastDropLine = null;
-  let hoverTarget = null;
+  let pressTimer = null, isDragging = false, ghost = null, dropLine = null;
 
-  function clearDropLine() {
-    if (lastDropLine) { lastDropLine.remove(); lastDropLine = null; }
-    document.querySelectorAll('.sub-indicator').forEach(x=>x.remove());
-  }
+  function clearLine() { if(dropLine){dropLine.remove();dropLine=null;} }
 
   bubble.addEventListener('touchstart', e => {
     pressTimer = setTimeout(() => {
@@ -871,7 +863,7 @@ function attachTouchDrag(bubble, itemIdx) {
       bubble.classList.add('dragging-touch');
       ghost = bubble.cloneNode(true);
       const r = bubble.getBoundingClientRect();
-      ghost.style.cssText = `position:fixed;z-index:9999;left:${r.left}px;top:${r.top}px;width:${r.width}px;opacity:0.8;pointer-events:none;border-radius:10px;transition:none;`;
+      ghost.style.cssText = `position:fixed;z-index:9999;left:${r.left}px;top:${r.top}px;width:${r.width}px;opacity:0.75;pointer-events:none;border-radius:10px;transition:none;`;
       document.body.appendChild(ghost);
     }, 500);
   }, {passive:true});
@@ -881,99 +873,56 @@ function attachTouchDrag(bubble, itemIdx) {
     e.preventDefault();
     const touch = e.touches[0];
     if (ghost) ghost.style.top = (touch.clientY - 25) + 'px';
+    clearLine();
 
     ghost.style.display = 'none';
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     ghost.style.display = '';
-    clearDropLine();
-    clearTimeout(hoverTimer);
 
-    const targetBubble = el?.closest('.bubble[data-i]');
-    if (targetBubble && targetBubble !== bubble) {
-      const r = targetBubble.getBoundingClientRect();
+    const targetRow = el?.closest('.brow, .divider-row');
+    if (targetRow) {
+      const r = targetRow.getBoundingClientRect();
       const isAbove = touch.clientY < r.top + r.height / 2;
-
-      // 하위항목 진입 표시 (2초)
-      if (targetBubble !== hoverTarget) {
-        hoverTarget = targetBubble;
-        hoverTimer = setTimeout(() => {
-          clearDropLine();
-          const ind = document.createElement('div');
-          ind.className = 'sub-indicator';
-          ind.textContent = '↳ 하위항목으로 추가';
-          targetBubble.closest('.brow')?.after(ind);
-          lastDropLine = ind;
-          navigator.vibrate && navigator.vibrate(50);
-        }, 2000);
-      }
-
-      // 삽입선 표시
-      const line = document.createElement('div');
-      line.className = 'drop-line';
-      const brow = targetBubble.closest('.brow');
-      if (brow) {
-        if (isAbove) brow.before(line);
-        else brow.after(line);
-        lastDropLine = line;
-      }
-    } else { hoverTarget = null; }
+      dropLine = document.createElement('div');
+      dropLine.className = 'drop-line';
+      if (isAbove) targetRow.before(dropLine);
+      else targetRow.after(dropLine);
+    }
   }, {passive:false});
 
   bubble.addEventListener('touchend', e => {
     clearTimeout(pressTimer);
-    clearTimeout(hoverTimer);
     if (!isDragging) return;
     isDragging = false;
     bubble.classList.remove('dragging-touch');
     if (ghost) { ghost.remove(); ghost = null; }
+    clearLine();
 
     const touch = e.changedTouches[0];
     ghost && (ghost.style.display='none');
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
-
-    // 하위항목 인디케이터가 있으면 하위항목으로
-    const subInd = document.querySelector('.sub-indicator');
-    if (subInd) {
-      const targetBubble = document.querySelector('.bubble.drag-over, .brow:has(+ .sub-indicator) .bubble');
-      const tb = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.bubble[data-i]');
-      if (tb) {
-        const destItem = items[+tb.dataset.i];
-        const srcItem = items[itemIdx];
-        if (destItem && srcItem && destItem !== srcItem) {
-          if (!destItem.subs) destItem.subs = [];
-          destItem.subs.push({ id: uid(), text: srcItem.text, done: false });
-          items.splice(itemIdx, 1);
-          saveItem(destItem);
-          deleteItem(srcItem.id);
-        }
-      }
-      clearDropLine();
-      return;
-    }
-    clearDropLine();
-
     const targetBubble = el?.closest('.bubble[data-i]');
+
     if (targetBubble && +targetBubble.dataset.i !== itemIdx) {
       const dest = +targetBubble.dataset.i;
-      const touch2 = e.changedTouches[0];
       const r = targetBubble.getBoundingClientRect();
-      const isAbove = touch2.clientY < r.top + r.height / 2;
+      const isAbove = touch.clientY < r.top + r.height / 2;
       const arr = [...items];
       const moved = arr.splice(itemIdx, 1)[0];
-      let target = isAbove ? dest : dest + 1;
-      if (itemIdx < dest) target = isAbove ? dest - 1 : dest;
-      arr.splice(Math.max(0, target), 0, moved);
+      let insertAt = isAbove ? dest : dest + 1;
+      if (itemIdx < dest) insertAt = isAbove ? dest - 1 : dest;
+      arr.splice(Math.max(0, insertAt), 0, moved);
       const base = Date.now();
       arr.forEach((it, idx2) => { it.order = base + idx2; saveItem(it); });
     }
   }, {passive:true});
 
   bubble.addEventListener('touchcancel', () => {
-    clearTimeout(pressTimer); clearTimeout(hoverTimer);
+    clearTimeout(pressTimer);
     isDragging = false;
     bubble.classList.remove('dragging-touch');
     if (ghost) { ghost.remove(); ghost = null; }
-    clearDropLine(); hoverTarget = null;
+    clearLine();
   });
 }
 
